@@ -1,0 +1,79 @@
+{
+    "actorSpecification": 1,
+    "fields": {},
+    "views": {
+        "overview": {
+            "title": "Lawyer Profiles Overview",
+            "description": "Complete view of all scraped lawyer profiles",
+            "transformation": {
+                "fields": [
+                    "name",
+                    "rating",
+                    "reviewCount",
+                    "practiceAreas",
+                    "location",
+                    "phone",
+                    "email",
+                    "website",
+                    "yearsLicensed",
+                    "barAdmissions",
+                    "languages",
+                    "profileUrl"
+                ]
+            },
+            "display": {
+                "component": "table",
+                "properties": {
+                    "name": {
+                        "label": "Attorney Name",
+                        "format": "text"
+                    },
+                    "rating": {
+                        "label": "Avvo Rating",
+                        "format": "number"
+                    },
+                    "reviewCount": {
+                        "label": "Reviews",
+                        "format": "number"
+                    },
+                    "practiceAreas": {
+                        "label": "Practice Areas",
+                        "format": "array"
+                    },
+                    "location": {
+                        "label": "Location",
+                        "format": "text"
+                    },
+                    "phone": {
+                        "label": "Phone",
+                        "format": "text"
+                    },
+                    "email": {
+                        "label": "Email",
+                        "format": "text"
+                    },
+                    "website": {
+                        "label": "Website",
+                        "format": "link"
+                    },
+                    "yearsLicensed": {
+                        "label": "Years Licensed",
+                        "format": "number"
+                    },
+                    "barAdmissions": {
+                        "label": "Bar Admissions",
+                        "format": "array"
+                    },
+                    "languages": {
+                        "label": "Languages",
+                        "format": "array"
+                    },
+                    "profileUrl": {
+                        "label": "Profile URL",
+                        "format": "link"
+                    }
+                }
+            }
+        }
+    }
+}

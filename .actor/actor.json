@@ -1,0 +1,21 @@
+{
+    "actorSpecification": 1,
+    "name": "avvo-lawyers-scraper",
+    "title": "Avvo Lawyers Scraper",
+    "description": "Extract comprehensive lawyer profiles from Avvo including practice areas, ratings, reviews, contact information, credentials, and experience. Perfect for legal directories, attorney research, and professional services databases.",
+    "version": "1.0",
+    "categories": [
+        "BUSINESS",
+        "OTHER"
+    ],
+    "meta": {
+        "templateId": "avvo-lawyers-scraper",
+        "generatedBy": "Claude Sonnet 4.5"
+    },
+    "input": "./input_schema.json",
+    "output": "./output_schema.json",
+    "storages": {
+        "dataset": "./dataset_schema.json"
+    },
+    "dockerfile": "../Dockerfile"
+}
