@@ -44,8 +44,8 @@ Filter attorney searches by:
 
 ### Performance
 
-- **Multiple Extraction Methods** - API-first HTTP, embedded JSON/JSON-LD, HTML parsing, and optional browser fallback
-- **Cloudflare Bypass** - Built-in evasion using Camoufox browser technology
+- **Multiple Extraction Methods** - API-first HTTP, embedded JSON/JSON-LD, and HTML parsing with automatic fallback
+- **Cloudflare Bypass** - Proxy-aware HTTP with retries and session rotation
 - **Concurrent Processing** - Fast parallel scraping with configurable concurrency
 - **Smart Deduplication** - Automatic duplicate removal across pages
 - **Profile Enrichment** - Optional deep profile extraction from detail pages
@@ -287,25 +287,10 @@ Uses selector-based parsing on HTTP-fetched HTML when JSON is not available.
 - Multiple selector strategies
 - Robust against site changes
 
-#### 4. Browser Fallback (Last Resort)
 
-Playwright + Camoufox is used only when HTTP extraction fails or is blocked.
+### Cloudflare Bypass Strategy
 
-**Advantages:**
-- Handles dynamic or protected pages
-- Bypasses heavy client rendering when needed
-
-### Cloudflare Bypass Technology
-
-**Camoufox** is used only in browser fallback mode to bypass Cloudflare or heavy JS pages:
-
-- **Randomized Fingerprinting** - Dynamic OS, screen resolution, and timezone randomization
-- **GeoIP Matching** - Automatic locale and location synchronization with proxy IP
-- **Realistic Behavior** - Human-like navigation patterns and timing
-- **Transparent Challenges** - Automatic Cloudflare challenge solving
-- **Stealth Mode** - Undetectable browser automation
-
-**Success Rate:** 99%+ Cloudflare bypass rate with residential proxies
+This Actor relies on proxy-aware HTTP, session rotation, and exponential backoff to reduce blocks. For best results, use residential proxies and keep concurrency reasonable.
 
 ### Performance Optimizations
 
@@ -314,7 +299,6 @@ Playwright + Camoufox is used only when HTTP extraction fails or is blocked.
 | API-First HTTP | 10-50x faster | Direct JSON endpoint calls |
 | Embedded JSON/JSON-LD | 5-20x faster | HTML JSON parsing |
 | Concurrent Requests | 3-5x faster | Parallel processing |
-| Browser Fallback Only When Needed | Lower cost | Optional Playwright pass |
 | Profile Enrichment | Detailed data | Batch HTTP requests |
 
 ### Quality Assurance
@@ -476,7 +460,6 @@ This scraper extracts publicly available attorney information from Avvo's direct
 - Verify practice area slug matches Avvo's URL format
 - Use Apify residential proxies for better reliability
 - Try different practice areas or locations
-- Enable `useBrowserFallback` if HTTP extraction is blocked
 - Enable `debugHtml` to inspect blocked pages
 - Check Actor logs for specific error messages
 

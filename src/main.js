@@ -1,7 +1,5 @@
 import { Actor, log } from 'apify';
-import { CheerioCrawler, PlaywrightCrawler, RequestQueue } from 'crawlee';
-import { launchOptions as camoufoxLaunchOptions } from 'camoufox-js';
-import { firefox } from 'playwright';
+import { CheerioCrawler, RequestQueue } from 'crawlee';
 import * as cheerio from 'cheerio';
 import { gotScraping } from 'got-scraping';
 
@@ -200,6 +198,9 @@ function normalizeLawyer(raw, baseUrl) {
         pickFirst(raw.practiceAreas, raw.specialties, raw.practiceArea, raw.tags, raw.knowsAbout, raw.areaServed)
     ).map(normalizeText).filter(Boolean);
 
+    const sameAs = normalizeArray(raw.sameAs);
+    const externalSameAs = sameAs.find((item) => typeof item === 'string' && !item.includes('avvo.com'));
+
     return {
         name: name || 'Unknown',
         rating: toNumber(pickFirst(raw.rating, raw.avvoRating, raw.aggregateRating?.ratingValue)),
@@ -208,7 +209,7 @@ function normalizeLawyer(raw, baseUrl) {
         location,
         phone: normalizeText(pickFirst(raw.phone, raw.phoneNumber, raw.telephone)),
         email: normalizeText(raw.email),
-        website: normalizeUrl(pickFirst(raw.website, raw.websiteUrl), baseUrl),
+        website: normalizeUrl(pickFirst(raw.website, raw.websiteUrl, externalSameAs), baseUrl),
         yearsLicensed: toInt(pickFirst(raw.yearsLicensed, raw.yearAdmitted)),
         barAdmissions: normalizeArray(raw.barAdmissions).map(normalizeText).filter(Boolean),
         languages: normalizeArray(raw.languages).map(normalizeText).filter(Boolean),
@@ -631,6 +632,8 @@ async function fetchLawyerProfile(profileUrl, { proxyUrl, userAgent, includeRevi
         }
 
         const $ = cheerio.load(html);
+        const jsonLdProfiles = extractLawyersFromJsonLd(html, profileUrl);
+        const jsonLdProfile = jsonLdProfiles[0] || null;
 
         const bio = normalizeText(
             $('[data-testid="bio"], .lawyer-bio, .bio-text, .profile-bio').first().text()
@@ -648,6 +651,47 @@ async function fetchLawyerProfile(profileUrl, { proxyUrl, userAgent, includeRevi
             if (value) awards.push(value);
         });
 
+        const emailLink = $('a[href^="mailto:"]').first();
+        const emailHref = emailLink.attr('href') || '';
+        const emailFromHtml = normalizeText(
+            emailHref.replace(/^mailto:/i, '').split('?')[0] || emailLink.text()
+        );
+
+        const phoneLink = $('a[href^="tel:"]').first();
+        const phoneHref = phoneLink.attr('href') || '';
+        const phoneFromHtml = normalizeText(
+            phoneHref.replace(/^tel:/i, '').split('?')[0] || phoneLink.text()
+        ) || normalizeText($('[data-testid="phone"], .phone').first().text());
+
+        const locationFromHtml = normalizeText(
+            $('[data-testid="address"], [data-testid="location"], .profile-address, .office-address, address, .address, .location')
+                .first()
+                .text()
+        );
+
+        const ratingFromHtml = toNumber(
+            normalizeText(
+                $('[data-testid="rating"], .avvo-rating, .rating-value, [class*="rating"]')
+                    .first()
+                    .text()
+            )
+        );
+
+        const websiteFromHtml = normalizeUrl(
+            $('[data-testid="website"] a, a[data-website], a[data-event-label="Website"], a[aria-label*="Website"], a[href*="website"]')
+                .first()
+                .attr('href') || '',
+            profileUrl
+        );
+
+        const practiceAreas = [];
+        $('[data-testid="practice-areas"], .practice-areas, .specialties')
+            .find('li, span, a')
+            .each((_, el) => {
+                const value = normalizeText($(el).text());
+                if (value) practiceAreas.push(value);
+            });
+
         let reviews = [];
         if (includeReviews) {
             const jsonLd = extractJsonLdObjects(html);
@@ -659,7 +703,19 @@ async function fetchLawyerProfile(profileUrl, { proxyUrl, userAgent, includeRevi
             });
         }
 
-        return { bio, education, awards, reviews };
+        return {
+            bio,
+            education,
+            awards,
+            reviews,
+            email: pickFirst(jsonLdProfile?.email, emailFromHtml),
+            phone: pickFirst(jsonLdProfile?.phone, phoneFromHtml),
+            location: pickFirst(jsonLdProfile?.location, locationFromHtml),
+            rating: pickFirst(jsonLdProfile?.rating, ratingFromHtml),
+            reviewCount: pickFirst(jsonLdProfile?.reviewCount, null),
+            website: pickFirst(jsonLdProfile?.website, websiteFromHtml),
+            practiceAreas: jsonLdProfile?.practiceAreas?.length ? jsonLdProfile.practiceAreas : practiceAreas,
+        };
     } catch (error) {
         log.debug(`Failed to fetch profile page ${profileUrl}: ${error.message}`);
         return null;
@@ -691,9 +747,16 @@ async function enrichLawyersWithProfiles(lawyers, options) {
                 return {
                     ...lawyer,
                     bio: profileData.bio || lawyer.bio,
-                    education: profileData.education || [],
-                    awards: profileData.awards || [],
-                    reviews: profileData.reviews || lawyer.reviews || [],
+                    education: profileData.education?.length ? profileData.education : (lawyer.education || []),
+                    awards: profileData.awards?.length ? profileData.awards : (lawyer.awards || []),
+                    reviews: profileData.reviews?.length ? profileData.reviews : (lawyer.reviews || []),
+                    email: profileData.email || lawyer.email,
+                    phone: profileData.phone || lawyer.phone,
+                    location: profileData.location || lawyer.location,
+                    rating: profileData.rating ?? lawyer.rating,
+                    reviewCount: profileData.reviewCount ?? lawyer.reviewCount,
+                    website: profileData.website || lawyer.website,
+                    practiceAreas: profileData.practiceAreas?.length ? profileData.practiceAreas : lawyer.practiceAreas,
                 };
             })
         );
@@ -779,88 +842,6 @@ async function enqueueSitemapUrls({ requestQueue, proxyUrl, limit }) {
     }
 }
 
-async function runBrowserFallback({ startUrls, proxyConfiguration, stats, maxLawyers, includeContactInfo, includeReviews }) {
-    log.info('Running browser fallback with Playwright (Camoufox)');
-    const seen = new Set();
-
-    const crawler = new PlaywrightCrawler({
-        proxyConfiguration,
-        maxRequestsPerCrawl: 5,
-        maxConcurrency: 1,
-        navigationTimeoutSecs: 40,
-        requestHandlerTimeoutSecs: 120,
-        launchContext: {
-            launcher: firefox,
-            launchOptions: await camoufoxLaunchOptions({
-                headless: true,
-                proxy: await proxyConfiguration.newUrl(),
-                geoip: true,
-                os: 'windows',
-                locale: 'en-US',
-                screen: {
-                    minWidth: 1024,
-                    maxWidth: 1920,
-                    minHeight: 768,
-                    maxHeight: 1080,
-                },
-            }),
-        },
-        async requestHandler({ page, request }) {
-            await page.goto(request.url, { waitUntil: 'domcontentloaded', timeout: 40000 });
-            await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
-
-            const html = await page.content();
-            if (isBlockedHtml(html)) {
-                log.warning(`Browser fallback blocked on ${request.url}`);
-                return;
-            }
-
-            const baseUrl = request.loadedUrl || request.url;
-            const lawyers = [];
-            const embeddedPayloads = extractEmbeddedJson(html);
-
-            lawyers.push(...extractLawyersFromJsonLd(html, baseUrl));
-            embeddedPayloads.forEach((payload) => {
-                lawyers.push(...extractLawyersFromApiJson(payload, baseUrl));
-            });
-
-            const $ = cheerio.load(html);
-            if (lawyers.length === 0) {
-                lawyers.push(...extractLawyerDataViaHtml($, baseUrl));
-            }
-
-            let filtered = lawyers.filter((lawyer) => {
-                if (!lawyer.profileUrl) return true;
-                if (seen.has(lawyer.profileUrl)) return false;
-                seen.add(lawyer.profileUrl);
-                return true;
-            });
-
-            if (maxLawyers > 0) {
-                filtered = filtered.slice(0, Math.max(0, maxLawyers - stats.totalLawyersScraped));
-            }
-
-            if (filtered.length === 0) return;
-
-            if (includeContactInfo || includeReviews) {
-                const userAgent = USER_AGENTS[0];
-                const proxyUrl = await proxyConfiguration.newUrl();
-                filtered = await enrichLawyersWithProfiles(filtered, {
-                    maxConcurrency: 2,
-                    proxyUrl,
-                    userAgent,
-                    includeReviews,
-                });
-            }
-
-            await Actor.pushData(filtered);
-            stats.totalLawyersScraped += filtered.length;
-        },
-    });
-
-    await crawler.run(startUrls.map((url) => ({ url })));
-}
-
 async function handleLawyers(lawyers, options) {
     const {
         maxLawyers,
@@ -912,7 +893,6 @@ try {
     const maxDelayMs = 1000;
     const useApiFirst = true;
     const useHtmlFallback = true;
-    const useBrowserFallback = false;
     const useSitemaps = false;
     const apiEndpoint = '';
     const includeReviews = input.includeReviews ?? true;
@@ -937,7 +917,6 @@ try {
         maxLawyers,
         useApiFirst,
         useHtmlFallback,
-        useBrowserFallback,
     });
 
     const startUrls = buildStartUrls(input);
@@ -1178,17 +1157,6 @@ try {
     });
 
     await crawler.run();
-
-    if (stats.totalLawyersScraped === 0 && useBrowserFallback) {
-        await runBrowserFallback({
-            startUrls,
-            proxyConfiguration,
-            stats,
-            maxLawyers,
-            includeContactInfo: includeContactInfo,
-            includeReviews: includeReviews,
-        });
-    }
 
     await Actor.setValue('statistics', {
         ...stats,
