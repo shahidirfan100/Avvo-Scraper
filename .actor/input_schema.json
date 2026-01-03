@@ -6,31 +6,9 @@
         "startUrl": {
             "title": "Start URL",
             "type": "string",
-            "description": "Direct Avvo lawyer directory URL to scrape from (e.g., https://www.avvo.com/bankruptcy-debt-lawyer/al.html). If provided, practiceArea and state parameters will be ignored.",
+            "description": "Direct Avvo lawyer directory URL to scrape from (e.g., https://www.avvo.com/bankruptcy-debt-lawyer/al.html).",
             "editor": "textfield",
             "prefill": "https://www.avvo.com/bankruptcy-debt-lawyer/al.html"
-        },
-        "practiceArea": {
-            "title": "Practice Area",
-            "type": "string",
-            "description": "Legal practice area to search for lawyers (e.g., bankruptcy-debt, family, criminal-defense, personal-injury, real-estate, business, immigration, employment, estate-planning, traffic-tickets). Required if startUrl is not provided.",
-            "editor": "textfield",
-            "default": "bankruptcy-debt",
-            "prefill": "bankruptcy-debt"
-        },
-        "state": {
-            "title": "State",
-            "type": "string",
-            "description": "Two-letter US state code (e.g., al, ca, ny, tx, fl). Required if startUrl is not provided.",
-            "editor": "textfield",
-            "default": "al",
-            "prefill": "al"
-        },
-        "city": {
-            "title": "City (Optional)",
-            "type": "string",
-            "description": "Specific city within the state to narrow down search (e.g., birmingham, montgomery, huntsville). Leave empty for entire state.",
-            "editor": "textfield"
         },
         "maxLawyers": {
             "title": "Maximum Lawyers",
@@ -39,12 +17,6 @@
             "default": 50,
             "minimum": 0,
             "maximum": 10000
-        },
-        "includeReviews": {
-            "title": "Include Reviews",
-            "type": "boolean",
-            "description": "Extract client reviews and ratings for each lawyer. This will increase scraping time but provides valuable insights.",
-            "default": true
         },
         "includeContactInfo": {
             "title": "Include Contact Information",
@@ -62,5 +34,7 @@
             }
         }
     },
-    "required": []
+    "required": [
+        "startUrl"
+    ]
 }

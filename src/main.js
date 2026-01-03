@@ -1158,20 +1158,19 @@ async function saveDebugHtml({ html, key, url, extra }) {
 }
 
 function buildSearchUrl(input) {
-    const practiceArea = input.practiceArea || 'bankruptcy-debt';
-    const state = input.state || 'al';
-    const city = input.city ? `${input.city.toLowerCase()}-` : '';
-    return `https://www.avvo.com/${practiceArea}-lawyer/${city}${state}.html`;
+    // Deprecated - kept for backwards compatibility but no longer used
+    return input.startUrl || 'https://www.avvo.com/bankruptcy-debt-lawyer/al.html';
 }
 
 function buildStartUrls(input) {
     if (Array.isArray(input.startUrls) && input.startUrls.length > 0) {
-        return input.startUrls.map((item) => item.url).filter(Boolean);
+        return input.startUrls.map((item) => item.url || item).filter(Boolean);
     }
     if (input.startUrl && input.startUrl.trim()) {
         return [input.startUrl.trim()];
     }
-    return [buildSearchUrl(input)];
+    // Default fallback
+    return ['https://www.avvo.com/bankruptcy-debt-lawyer/al.html'];
 }
 
 async function enqueueSitemapUrls({ requestQueue, proxyUrl, limit }) {
@@ -1280,13 +1279,12 @@ try {
     const maxDelayMs = 2000; // Increased for more human-like behavior
     const useApiFirst = true;
     const useHtmlFallback = true;
-    const includeReviews = input.includeReviews ?? true;
+    const includeReviews = true; // Always include reviews
     const includeContactInfo = input.includeContactInfo ?? true;
 
-    if (!input.startUrl?.trim()
-        && (!Array.isArray(input.startUrls) || input.startUrls.length === 0)
-        && (!input.practiceArea?.trim() || !input.state?.trim())) {
-        throw new Error('Invalid input: provide "startUrl", "startUrls", or both "practiceArea" and "state".');
+    // Validate startUrl is provided
+    if (!input.startUrl?.trim() && (!Array.isArray(input.startUrls) || input.startUrls.length === 0)) {
+        throw new Error('Invalid input: "startUrl" is required.');
     }
 
     if (maxLawyers < 0 || maxLawyers > 10000) {
@@ -1296,12 +1294,8 @@ try {
     log.info('Starting Avvo Lawyers Scraper', {
         startUrl: input.startUrl,
         startUrls: input.startUrls?.length || 0,
-        practiceArea: input.practiceArea,
-        state: input.state,
-        city: input.city,
         maxLawyers,
-        useApiFirst,
-        useHtmlFallback,
+        includeContactInfo,
     });
 
     const startUrls = buildStartUrls(input);

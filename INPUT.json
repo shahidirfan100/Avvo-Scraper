@@ -1,9 +1,7 @@
 {
   "startUrl": "https://www.avvo.com/bankruptcy-debt-lawyer/al.html",
-  "practiceArea": "bankruptcy-debt",
-  "state": "al",
   "maxLawyers": 50,
-  "includeReviews": true,
+  "includeContactInfo": true,
   "proxyConfiguration": {
     "useApifyProxy": true
   }
