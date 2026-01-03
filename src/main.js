@@ -79,17 +79,16 @@ function normalizeImage(value, baseUrl) {
         );
     }
 
-    // Filter out Avvo logos and placeholder images
+    // Filter out placeholder images
     if (imgUrl) {
         const urlLower = imgUrl.toLowerCase();
-        if (urlLower.includes('avvo-logo') ||
-            urlLower.includes('avvo_logo') ||
-            urlLower.includes('/logo/') ||
-            urlLower.includes('placeholder') ||
+        if (urlLower.includes('placeholder') ||
             urlLower.includes('default-avatar') ||
             urlLower.includes('default_avatar') ||
             urlLower.includes('no-photo') ||
-            urlLower.includes('no_photo')) {
+            urlLower.includes('no_photo') ||
+            urlLower.includes('ghost.svg') ||  // Avvo placeholder image
+            urlLower.includes('ghost-')) {     // Other ghost placeholders
             return '';
         }
     }
@@ -816,7 +815,7 @@ function extractLawyerFromElement($, $el, baseUrl) {
 
         const imageEl = $el.find('img').first();
         const headshotImgEl = $el.find('div.headshot img, .headshot img').first();
-        const image = normalizeUrl(
+        const image = normalizeImage(
             pickAttrValue(headshotImgEl.length > 0 ? headshotImgEl : imageEl, ['src', 'data-src']) ||
             headshotImgEl.attr('src') ||
             imageEl.attr('src') ||
@@ -835,7 +834,6 @@ function extractLawyerFromElement($, $el, baseUrl) {
             phone,
             email: '',
             website,
-            yearsLicensed,
             barAdmissions,
             languages,
             profileUrl,
@@ -952,6 +950,18 @@ async function fetchLawyerProfile(profileUrl, { proxyUrl, userAgent, includeRevi
         // Use specific CSS selector for rating from detail page
         const reviewScoreLink = $('a.review-score').first();
         const ratingFromReviewScore = toNumber(normalizeText(reviewScoreLink.text()));
+
+        // Also try the Avvo rating badge (e.g., "Rating: 10.0")
+        const avvoRatingBadge = $('span.avvo-rating-count').first();
+        let avvoRatingFromBadge = null;
+        if (avvoRatingBadge.length > 0) {
+            const badgeText = normalizeText(avvoRatingBadge.text());
+            const ratingMatch = badgeText.match(/(\d+\.?\d*)/);
+            if (ratingMatch) {
+                avvoRatingFromBadge = toNumber(ratingMatch[1]);
+            }
+        }
+
         const ratingFromHtml = ratingFromReviewScore || toNumber(
             normalizeText(
                 $('[data-testid="rating"], .avvo-rating, .rating-value, [class*="rating"]')
@@ -986,14 +996,15 @@ async function fetchLawyerProfile(profileUrl, { proxyUrl, userAgent, includeRevi
             profileUrl
         );
 
-        const imageFromMeta = normalizeUrl(
+        // Use normalizeImage (not normalizeUrl) to filter out Avvo logos
+        const imageFromMeta = normalizeImage(
             $('meta[property="og:image"], meta[name="twitter:image"], meta[itemprop="image"]').first().attr('content') || '',
             profileUrl
         );
 
         // Use specific CSS selector for profile image from detail page
         const headshotImg = $('div.headshot img').first();
-        const imageFromHtml = normalizeUrl(
+        const imageFromHtml = normalizeImage(
             pickAttrValue(headshotImg, ['src', 'data-src', 'data-lazy-src']) ||
             pickAttrValue(
                 $('[data-testid="profile-photo"] img, .profile-photo img, .profile-header img, img[alt*="Attorney"], img[alt*="Lawyer"], img[itemprop="image"]')
@@ -1004,20 +1015,37 @@ async function fetchLawyerProfile(profileUrl, { proxyUrl, userAgent, includeRevi
         );
 
         // Use specific CSS selector for practice areas from detail page
+        // span.practice-area-list contains comma-separated text like "Divorce & Separation, Family, Child Custody"
         const practiceAreas = [];
         const practiceAreaList = $('span.practice-area-list');
         if (practiceAreaList.length > 0) {
-            practiceAreaList.find('a, span').each((_, el) => {
+            const practiceText = normalizeText(practiceAreaList.text());
+            if (practiceText) {
+                // Split by comma and add each practice area
+                practiceText.split(',').forEach((area) => {
+                    const trimmed = normalizeText(area);
+                    if (trimmed && trimmed.length > 1) {
+                        practiceAreas.push(trimmed);
+                    }
+                });
+            }
+        }
+
+        // Fallback: Try detailed practice area section
+        if (practiceAreas.length === 0) {
+            $('div.practice-area-detail strong').each((_, el) => {
                 const value = normalizeText($(el).text());
-                if (value) practiceAreas.push(value);
+                if (value && value.length > 1) practiceAreas.push(value);
             });
-        } else {
-            // Fallback to generic selectors
+        }
+
+        // Fallback: Try generic selectors
+        if (practiceAreas.length === 0) {
             $('[data-testid="practice-areas"], .practice-areas, .specialties')
                 .find('li, span, a')
                 .each((_, el) => {
                     const value = normalizeText($(el).text());
-                    if (value) practiceAreas.push(value);
+                    if (value && value.length > 1) practiceAreas.push(value);
                 });
         }
 
@@ -1041,19 +1069,19 @@ async function fetchLawyerProfile(profileUrl, { proxyUrl, userAgent, includeRevi
             phone: pickFirst(jsonLdProfile?.phone, embeddedProfile?.phone, phoneFromData, phoneFromHtml),
             location: pickFirst(jsonLdProfile?.location, embeddedProfile?.location, locationFromHtml),
             rating: pickFirst(jsonLdProfile?.rating, embeddedProfile?.rating, ratingFromMeta, ratingFromHtml),
-            avvoRating: pickFirst(jsonLdProfile?.avvoRating, embeddedProfile?.avvoRating),
-            clientRating: pickFirst(jsonLdProfile?.clientRating, embeddedProfile?.clientRating),
+            avvoRating: pickFirst(avvoRatingFromBadge, jsonLdProfile?.avvoRating, embeddedProfile?.avvoRating),
+            clientRating: pickFirst(ratingFromReviewScore, jsonLdProfile?.clientRating, embeddedProfile?.clientRating),
             reviewCount: pickFirst(
+                reviewCountFromHtml,
                 jsonLdProfile?.reviewCount,
                 embeddedProfile?.reviewCount,
-                reviewCountFromMeta,
-                reviewCountFromHtml
+                reviewCountFromMeta
             ),
             website: pickFirst(jsonLdProfile?.website, embeddedProfile?.website, websiteFromHtml),
-            image: pickFirst(jsonLdProfile?.image, embeddedProfile?.image, imageFromMeta, imageFromHtml),
-            practiceAreas: jsonLdProfile?.practiceAreas?.length
-                ? jsonLdProfile.practiceAreas
-                : (embeddedProfile?.practiceAreas?.length ? embeddedProfile.practiceAreas : practiceAreas),
+            image: pickFirst(imageFromHtml, imageFromMeta, jsonLdProfile?.image, embeddedProfile?.image),
+            practiceAreas: practiceAreas.length > 0
+                ? practiceAreas
+                : (jsonLdProfile?.practiceAreas?.length ? jsonLdProfile.practiceAreas : (embeddedProfile?.practiceAreas || [])),
             licenseYear: extractLicenseYear($, html),
             coordinates: pickFirst(jsonLdProfile?.coordinates, embeddedProfile?.coordinates),
             licenseStates: pickFirst(jsonLdProfile?.licenseStates, embeddedProfile?.licenseStates),
